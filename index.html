@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Captura de Cheques</title>
+
+  <!-- CropperJS -->
+  <link rel="stylesheet" href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css">
+  <script defer src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
+
+  <style>
+    :root{ --accent:#0ea5e9; --bg:#0b1220; --muted:#94a3b8; --ok:#22c55e; --danger:#ef4444; }
+    *{ box-sizing:border-box }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:#0b1220; color:#e5e7eb }
+    header{ padding:16px; border-bottom:1px solid #1f2937; background:linear-gradient(180deg,#0f172a,#0b1220); position:sticky; top:0; z-index:20 }
+    header h1{ margin:0 0 6px; font-size:20px }
+    header p{ margin:0; color:var(--muted); font-size:14px }
+    .wrap{ max-width:980px; margin:0 auto; padding:16px }
+
+    .tabs{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap }
+    .tabbtn{ padding:10px 14px; border-radius:999px; border:1px solid #1f2937; background:#0f172a; color:#cbd5e1; cursor:pointer; font-weight:700 }
+    .tabbtn.active{ background:var(--accent); color:#021018; border-color:transparent }
+    .tabpane{ display:none; margin-top:14px }
+    .tabpane.active{ display:block }
+
+    .stage{ border:1px dashed #334155; border-radius:14px; background:#0f172a; overflow:hidden }
+    .frame{ position:relative; display:block; aspect-ratio:2.5/1 }
+    #heroPreview{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:none }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px }
+    .pill{ padding:11px 16px; border-radius:999px; font-weight:700; border:1px solid #1f2937; background:#111827; color:#e5e7eb; cursor:pointer }
+    .pill.primary{ background:var(--accent); color:#021018; border-color:transparent }
+    .pill.ok{ background:#052e1a; border-color:#064e3b; color:#86efac }
+    .pill.danger{ background:#3f1d1d; border-color:#7f1d1d; color:#fecaca }
+    .pill:disabled{ opacity:.6; cursor:not-allowed }
+    .chip{ font-size:12px; color:#a3a3a3; border:1px solid #1f2937; padding:6px 10px; border-radius:999px }
+    .status{ margin-left:8px; font-size:13px }
+
+    .card{ margin-top:14px; background:#0f172a; border:1px solid #1f2937; border-radius:16px; padding:12px }
+    .thumb{ width:100%; height:auto; border-radius:12px; display:block; background:#020617 }
+
+    .modal{ position:fixed; inset:0; background:rgba(2,6,23,.9); display:none; align-items:center; justify-content:center; padding:16px; z-index:40 }
+    .modal.show{ display:flex }
+    .editor{ background:#0f172a; border:1px solid #1f2937; border-radius:16px; max-width:min(96vw,900px); width:100%; padding:12px }
+    .editor .canvas{ width:100%; max-height:65vh; overflow:hidden; border-radius:12px; background:#020617 }
+    .editor img{ max-width:100% }
+    .toolrow{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-top:10px }
+    .left,.right{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+    .rangewrap{ display:flex; align-items:center; gap:8px }
+    input[type="range"]{ width:min(62vw,480px) }
+    .oktext{ color:#86efac }
+
+    /* STATUS layout “imagen izquierda / campos derecha” */
+    .flex-split{ display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap }
+    .fields-grid{ display:grid; grid-template-columns: 28px 220px 1fr; gap:10px; align-items:center }
+    .fields-grid label{ color:#cbd5e1; font-size:14px }
+    .fields-grid input, .fields-grid textarea{
+      width:100%; padding:9px 10px; border-radius:10px; border:1px solid #1f2937; background:#0b1220; color:#e5e7eb
+    }
+    .fields-grid textarea{ min-height:74px; resize:vertical }
+    .muted{ color:#94a3b8; font-size:12px }
+    a.inline{ color:#7dd3fc; text-decoration:underline; }
+    .hr{ height:1px; background:#1f2937; margin:10px 0 }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Captura de Cheques</h1>
+    <p> Conviene subir y procesar uno por uno los cheques.<br> Desde el telefono solo podes usar la camara y no la galeria, lo voy a arreglar dont worry. Recorda que si agregas un cheque ya cargado con anterioridad, vas a tener que volver a validarlo, quiere decir que no vas a tener cheques duplicados.
+    Recorda siempre que entre la carga del cheque y lo que tarda en procesarse, podes estirar los brazos. 
+    A Status tenele paciencia entre la carga del cheque nuevo y que aparezca para ser validado, eso es lo que tarda en procesar y transcribir el cheque. 
+       <strong></strong>  <strong></strong> 
+       <strong></strong>  <strong></strong>
+    </p>
+  </header>
+
+  <div class="wrap">
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tabbtn active" data-tab="captura">Captura</button>
+      <button class="tabbtn" data-tab="status">Status</button>
+      <span class="chip">ID dispositivo: <span id="deviceIdChip">—</span></span>
+    </div>
+
+    <!-- Pestaña CAPTURA -->
+    <section id="tab-captura" class="tabpane active">
+      <div class="stage"><div class="frame"><img id="heroPreview" alt="Última imagen recortada"></div></div>
+
+      <div class="row">
+        <input id="fileInput" type="file" accept="image/*" capture="environment" multiple style="display:none">
+        <label for="fileInput" class="pill primary">Tomar foto(s)</label>
+        <span class="chip">Pendientes: <span id="pendingChip">0</span></span>
+      </div>
+
+      <div class="row">
+        <button id="uploadBtn" class="pill">Subir Documentos (cheques)</button>
+        <span id="uploadStatus" class="status"></span>
+      </div>
+
+      <h2 style="margin:18px 0 8px">Resultados</h2>
+      <div id="results"></div>
+    </section>
+
+    <!-- Pestaña STATUS -->
+    <section id="tab-status" class="tabpane">
+      <div class="row">
+        <button id="refreshStatusBtn" class="pill primary">Actualizar Status</button>
+        <a id="openJsonLink" class="pill" href="#" target="_blank" rel="noopener">Ver JSON</a>
+        <span id="statusMsg" class="status"></span>
+      </div>
+
+      <div class="muted" style="margin-top:6px;">
+       
+      <!-- Algun Texto que queramos poner Abajo del boton Actualizar Status -->
+      </div>
+
+      <!-- Estado vacío -->
+      <div id="emptyState" class="card" style="display:none; padding:16px;">
+        <div class="muted">No hay cheques pendientes para validar.</div>
+      </div>
+
+      <!-- Layout imagen + formulario -->
+      <div id="statusWrap" class="flex-split" style="display:none">
+        <!-- Col izquierda: imagen -->
+        <div style="flex:1 1 360px; max-width:520px" class="card">
+          <img id="chequeImage" class="thumb" alt="Cheque" referrerpolicy="no-referrer">
+          <div class="row" style="margin-top:8px">
+            <a id="openImageLink" class="pill" href="#" target="_blank" rel="noopener">Abrir imagen</a>
+            <button id="markAllOkBtn" class="pill ok">Marcar todo OK</button>
+            <button id="clearAllOkBtn" class="pill">Limpiar checks</button>
+          </div>
+          <div class="hr"></div>
+          <div class="muted" id="metaInfo">—</div>
+        </div>
+
+        <!-- Col derecha: campos -->
+        <div style="flex:1 1 480px" class="card">
+          <div class="fields-grid" id="fieldsGrid"></div>
+          <div class="row" style="justify-content:flex-end">
+            <button id="saveBtn" class="pill primary">Guardar</button>
+            <span id="saveMsg" class="status"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="multiSelector" class="row" style="display:none">
+        <label class="chip">Registros: <select id="recordSelect" class="pill"></select></label>
+      </div>
+    </section>
+  </div>
+
+  <!-- Modal / Editor -->
+  <div id="editorModal" class="modal" aria-hidden="true">
+    <div class="editor">
+      <div class="canvas"><img id="editImg" alt="Editor"></div>
+      <div class="toolrow">
+        <div class="left">
+          <span class="chip">Relación 2.5:1</span>
+          <div class="rangewrap">
+            <label for="rotRange" style="font-size:14px;">Rotación:</label>
+            <input id="rotRange" type="range" min="-180" max="180" step="1" value="0" />
+            <span id="rotVal" style="width:48px;text-align:right;">0°</span>
+          </div>
+        </div>
+        <div class="right">
+          <button id="resetBtn" class="pill">Reset</button>
+          <button id="cancelBtn" class="pill">Cancelar</button>
+          <button id="applyBtn" class="pill ok">Aplicar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Config =====
+    const OUTPUT_WIDTH = 2200;
+    const JPEG_QUALITY = 0.92;
+    const N8N_UPLOAD   = "https://n8n.misecretaria.com.ar/webhook/scan";
+    const N8N_STATUS   = "https://n8n.misecretaria.com.ar/webhook/consulta";
+    const N8N_VALIDATE = "https://n8n.misecretaria.com.ar/webhook/validar"; // <-- tu webhook de guardar
+
+    // ===== Tabs =====
+    const tabButtons = document.querySelectorAll('.tabbtn');
+    const panes = { captura: document.getElementById('tab-captura'), status: document.getElementById('tab-status') };
+    tabButtons.forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        tabButtons.forEach(b=>b.classList.remove('active'));
+        Object.values(panes).forEach(p=>p.classList.remove('active'));
+        btn.classList.add('active');
+        panes[btn.dataset.tab].classList.add('active');
+        if(btn.dataset.tab==='status'){ fetchStatus(); }
+      });
+    });
+
+    // ===== DOM (captura) =====
+    const fileInput=document.getElementById('fileInput'), results=document.getElementById('results'), hero=document.getElementById('heroPreview');
+    const uploadBtn=document.getElementById('uploadBtn'), uploadStat=document.getElementById('uploadStatus');
+    const deviceChip=document.getElementById('deviceIdChip'), pendingChip=document.getElementById('pendingChip');
+
+    // Editor
+    const modal=document.getElementById('editorModal'), editImg=document.getElementById('editImg'), rotRange=document.getElementById('rotRange');
+    const rotVal=document.getElementById('rotVal'), resetBtn=document.getElementById('resetBtn'), applyBtn=document.getElementById('applyBtn'), cancelBtn=document.getElementById('cancelBtn');
+
+    // ===== DOM (status) =====
+    const statusWrap=document.getElementById('statusWrap'), chequeImage=document.getElementById('chequeImage'), openImageLink=document.getElementById('openImageLink');
+    const markAllOkBtn=document.getElementById('markAllOkBtn'), clearAllOkBtn=document.getElementById('clearAllOkBtn');
+    const fieldsGrid=document.getElementById('fieldsGrid'), saveBtn=document.getElementById('saveBtn'), saveMsg=document.getElementById('saveMsg'), metaInfo=document.getElementById('metaInfo');
+    const emptyState=document.getElementById('emptyState');
+    const refreshStatusBtn=document.getElementById('refreshStatusBtn'), statusMsg=document.getElementById('statusMsg'), openJsonLink=document.getElementById('openJsonLink');
+    const multiSelector=document.getElementById('multiSelector'), recordSelect=document.getElementById('recordSelect');
+
+    // ===== Estado (captura) =====
+    let cropper=null, currentIdx=-1; const originals=[], processed=[];
+
+    // ===== Device ID persistente =====
+    const DEV_KEY='scanDeviceId';
+    function randomHex(n=8){ const b=new Uint8Array(n); crypto.getRandomValues(b); return [...b].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+    let deviceId = localStorage.getItem(DEV_KEY) || randomHex(8);
+    localStorage.setItem(DEV_KEY, deviceId);
+    deviceChip.textContent = deviceId.slice(0,8);
+
+    // ===== Helpers UI =====
+    const openModal = ()=>{ modal.classList.add('show'); modal.setAttribute('aria-hidden','false'); };
+    const closeModal= ()=>{ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); };
+    const destroyCropper=()=>{ if(cropper){ cropper.destroy(); cropper=null; } };
+    const updatePending=()=>{ const pending=originals.filter((_,i)=>!processed[i]).length; pendingChip.textContent=pending; };
+
+    function loadForEdit(index){
+      currentIdx=index; destroyCropper(); rotRange.value=0; rotVal.textContent='0°';
+      editImg.src = originals[index].url; openModal();
+      editImg.onload = ()=>{ cropper = new Cropper(editImg, { viewMode:1, aspectRatio:2.5, autoCropArea:1, zoomable:true, movable:true, rotatable:true, background:false, responsive:true }); };
+    }
+
+    function addResultCard({url,name}, idx){
+      const card=document.createElement('div'); card.className='card'; card.dataset.idx=idx;
+      card.innerHTML=`<img class="thumb" src="${url}" alt="${name}">
+      <div class="row">
+        <a class="pill" href="${url}" download="${name}">Descargar JPG</a>
+        <button class="pill" data-act="copy">Copiar</button>
+        <button class="pill" data-act="edit">Editar</button>
+        <button class="pill danger" data-act="delete">Eliminar</button>
+      </div>`;
+      card.addEventListener('click', async (e)=>{
+        const act=e.target?.dataset?.act; if(!act) return; const i=Number(card.dataset.idx);
+        if(act==='edit'){ loadForEdit(i); }
+        else if(act==='delete'){ processed[i]=null; card.remove(); updatePending(); }
+        else if(act==='copy'){ try{ const blob=await (await fetch(processed[i].url)).blob(); await navigator.clipboard.write([new ClipboardItem({[blob.type]:blob})]); e.target.textContent='¡Copiado!'; setTimeout(()=>e.target.textContent='Copiar',1200);}catch{ alert('No se pudo copiar. Descargá la imagen.'); } }
+      });
+      results.prepend(card);
+    }
+
+    rotRange.addEventListener('input', ()=>{ const deg=parseFloat(rotRange.value)||0; rotVal.textContent=`${deg}°`; if(cropper) cropper.rotateTo(deg); });
+    resetBtn.addEventListener('click', ()=>{ if(!cropper) return; cropper.reset(); cropper.rotateTo(0); rotRange.value=0; rotVal.textContent='0°'; });
+    cancelBtn.addEventListener('click', ()=>{ closeModal(); destroyCropper(); });
+    applyBtn.addEventListener('click', async ()=>{
+      if(!cropper) return;
+      try{
+        const data=cropper.getData(true), scale=OUTPUT_WIDTH/data.width, outW=Math.round(OUTPUT_WIDTH), outH=Math.round(data.height*scale);
+        const canvas=cropper.getCroppedCanvas({ width:outW, height:outH, imageSmoothingEnabled:true, imageSmoothingQuality:'high', fillColor:'#ffffff' });
+        const blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',JPEG_QUALITY));
+        const url=URL.createObjectURL(blob), name=`cheque_${Date.now()}_${(currentIdx+1).toString().padStart(2,'0')}.jpg`;
+        processed[currentIdx]={ blob,url,name }; hero.src=url; hero.style.display='';
+        const existing=results.querySelector(`.card[data-idx="${currentIdx}"]`); if(existing) existing.remove(); addResultCard({url,name}, currentIdx); updatePending();
+      }catch{ alert('No se pudo generar el recorte.'); }
+      finally{ closeModal(); destroyCropper(); }
+    });
+
+    modal.addEventListener('click',(e)=>{ if(e.target===modal){ closeModal(); destroyCropper(); } });
+    window.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && modal.classList.contains('show')){ closeModal(); destroyCropper(); } });
+
+    // === Selección de archivos (múltiple) ===
+    fileInput.addEventListener('change',(e)=>{
+      const files=Array.from(e.target.files||[]); if(!files.length) return;
+      files.forEach(file=>{ originals.push({ file, name:file.name||`foto_${Date.now()}.jpg`, url:URL.createObjectURL(file) }); processed.push(null); });
+      updatePending(); const first=originals.findIndex((_,i)=>!processed[i]); if(first!==-1) loadForEdit(first); fileInput.value='';
+    });
+
+    // === Upload a N8N ===
+    async function uploadAll(){
+      const ready=processed.filter(Boolean); if(!ready.length){ alert('No hay imágenes procesadas.'); return; }
+      uploadBtn.disabled=true; uploadStat.textContent='Subiendo...'; uploadStat.className='status';
+      try{
+        const fd=new FormData(); ready.forEach(it=>fd.append('images[]', it.blob, it.name));
+        fd.append('device_id', deviceId); fd.append('images_count', String(ready.length)); fd.append('ua', navigator.userAgent);
+        const resp=await fetch(N8N_UPLOAD,{ method:'POST', body:fd, credentials:'omit' }); if(!resp.ok) throw new Error('HTTP '+resp.status);
+        uploadStat.textContent='✅ Cargado. ¡Ahora valida en Status.!'; uploadStat.className='status oktext';
+      }catch(e){ uploadStat.textContent='⚠️ Enviado (respuesta no legible por CORS). Verificá N8N.'; uploadStat.className='status'; }
+      finally{ uploadBtn.disabled=false; }
+    }
+    uploadBtn.addEventListener('click', uploadAll);
+
+    // ===== Helpers Google Drive =====
+    function extractDriveId(u){
+      try{ const url=new URL(u); const m=url.pathname.match(/\/file\/d\/([^/]+)/); if(m) return m[1]; const id=url.searchParams.get('id'); if(id) return id; }catch{} return null;
+    }
+    function toEmbeddableDrive(u){
+      const id=extractDriveId(u);
+      if(id) return `https://drive.google.com/uc?export=view&id=${id}`;
+      try{ const url=new URL(u); if(url.searchParams.get('export')==='download'){ url.searchParams.set('export','view'); return url.toString(); } }catch{}
+      return u;
+    }
+
+    // ===== STATUS =====
+    function normalizeItems(json){
+      if(Array.isArray(json)) return json;
+      if(json && Array.isArray(json.items)) return json.items;
+      if(json && Array.isArray(json.data))  return json.data;
+      if(json && typeof json === 'object') return [json];
+      return [];
+    }
+
+    const FIELD_ALIASES = {
+      "Link Imagen Cheque": ["link imagen cheque","image_url","imagen","img","image","link imagen","url"],
+      "device_id": ["device_id","deviceId"],
+    };
+    function findField(obj, keys){
+      for(const k of keys){
+        for(const ok of Object.keys(obj)){
+          if(ok.toLowerCase() === k.toLowerCase()) return ok;
+        }
+      }
+      return null;
+    }
+
+    // --- Estado del registro actual (para comparar cambios) ---
+    let currentRecordOriginal = null;
+    let currentRecordId = null;
+    let currentImageUrl = null;
+
+    function renderFieldsFor(record){
+      fieldsGrid.innerHTML = "";
+      currentRecordOriginal = JSON.parse(JSON.stringify(record));
+
+      const imgKey = findField(record, FIELD_ALIASES["Link Imagen Cheque"] || []);
+      const devKey = findField(record, FIELD_ALIASES["device_id"] || []);
+
+      currentRecordId = record.row_number ?? record.id ?? null;
+      currentImageUrl = imgKey ? record[imgKey] : null;
+
+      metaInfo.textContent = `ID/row: ${currentRecordId ?? '—'} · Device: ${devKey ? record[devKey] : '—'}`;
+
+      const imgUrl = imgKey ? record[imgKey] : "";
+      if(imgUrl){
+        const displayUrl = toEmbeddableDrive(imgUrl);
+        chequeImage.src = displayUrl;
+        chequeImage.onerror = () => {
+          const id = extractDriveId(imgUrl);
+          if(id) chequeImage.src = `https://drive.google.com/thumbnail?id=${id}&sz=w2000`;
+        };
+        openImageLink.href = imgUrl;
+      } else {
+        chequeImage.removeAttribute("src");
+        openImageLink.href = "#";
+      }
+
+      const skip = new Set([imgKey, devKey].filter(Boolean));
+      const keys = Object.keys(record).filter(k=>!skip.has(k));
+      for(const key of keys){
+        const value = record[key] ?? "";
+        const row = document.createElement("div");
+        row.className = "row";
+        row.style.marginTop = "0";
+        row.innerHTML = `
+          <input type="checkbox" class="fld-ok" data-key="${key}">
+          <label title="${key}">${key}</label>
+          ${String(value).length > 80
+            ? `<textarea class="fld-val" data-key="${key}" spellcheck="false">${String(value)}</textarea>`
+            : `<input class="fld-val" data-key="${key}" value="${String(value)}">`
+          }
+        `;
+        fieldsGrid.appendChild(row.firstElementChild);
+        fieldsGrid.appendChild(row.querySelector('label'));
+        fieldsGrid.appendChild(row.querySelector('.fld-val'));
+      }
+    }
+
+    function renderStatus(items){
+      if(!items.length){
+        statusWrap.style.display="none";
+        multiSelector.style.display="none";
+        return;
+      }
+
+      statusWrap.style.display="";
+      if(items.length>1){
+        multiSelector.style.display=""; recordSelect.innerHTML="";
+        items.forEach((it,idx)=>{ const rid=it.row_number ?? it.id ?? (idx+1); const opt=document.createElement("option"); opt.value=String(idx); opt.textContent=`Registro ${rid}`; recordSelect.appendChild(opt); });
+        recordSelect.onchange=()=>renderFieldsFor(items[Number(recordSelect.value)]);
+        recordSelect.value="0";
+      }else{
+        multiSelector.style.display="none";
+      }
+
+      renderFieldsFor(items[0]);
+
+      markAllOkBtn.onclick = ()=>{ fieldsGrid.querySelectorAll('.fld-ok').forEach(cb=>cb.checked=true); };
+      clearAllOkBtn.onclick = ()=>{ fieldsGrid.querySelectorAll('.fld-ok').forEach(cb=>cb.checked=false); };
+    }
+
+    // === Guardar (envío al webhook) ===
+    function readFormValues(){
+      const values = {};
+      fieldsGrid.querySelectorAll('.fld-val').forEach(el=>{ values[el.dataset.key] = el.value; });
+      const checks = {};
+      fieldsGrid.querySelectorAll('.fld-ok').forEach(el=>{ checks[el.dataset.key] = !!el.checked; });
+      return { values, checks };
+    }
+    function diffUpdates(original, formValues, checks){
+      const updates = {};
+      for(const k of Object.keys(formValues)){
+        if(!checks[k]) continue;
+        const before = original[k] == null ? "" : String(original[k]);
+        const after  = formValues[k] == null ? "" : String(formValues[k]);
+        if(before !== after) updates[k] = formValues[k];
+      }
+      return updates;
+    }
+    saveBtn.addEventListener('click', async ()=>{
+      saveBtn.disabled = true; saveMsg.textContent='Guardando...'; saveMsg.className='status';
+      try{
+        const { values, checks } = readFormValues();
+        const updates = diffUpdates(currentRecordOriginal || {}, values, checks);
+
+        const payload = {
+          device_id: (currentRecordOriginal?.device_id ?? deviceId),
+          record_id: currentRecordId,
+          image_url: currentImageUrl,
+          form: values,
+          checks,
+          updates,
+          original: currentRecordOriginal,
+          meta: { ts: new Date().toISOString(), userAgent: navigator.userAgent }
+        };
+
+        const resp = await fetch(N8N_VALIDATE, {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify(payload),
+          credentials: 'omit'
+        });
+        if(!resp.ok) throw new Error('HTTP '+resp.status);
+
+        saveMsg.textContent='✅ Guardado';
+        saveMsg.className='status oktext';
+      }catch(e){
+        console.error(e);
+        saveMsg.textContent='⚠️ Error al guardar';
+        saveMsg.className='status';
+      }finally{
+        saveBtn.disabled = false;
+      }
+    });
+
+    // === Fetch de status (maneja vacío) ===
+    async function fetchStatus(){
+      statusMsg.textContent='Consultando...';
+      statusMsg.className='status';
+
+      const url = `${N8N_STATUS}?id=${encodeURIComponent(deviceId)}`;
+      openJsonLink.href = url;
+
+      try{
+        const resp = await fetch(url, { method:'GET', credentials:'omit' });
+        if(!resp.ok) throw new Error('HTTP '+resp.status);
+
+        const raw = await resp.text();
+        let items = [];
+        if(raw && raw.trim() !== ''){
+          try{
+            const json = JSON.parse(raw);
+            items = normalizeItems(json);
+          }catch{
+            items = [];
+          }
+        }
+
+        renderStatus(items);
+
+        if(items.length === 0){
+          statusWrap.style.display = "none";
+          multiSelector.style.display = "none";
+          emptyState.style.display = "";
+          statusMsg.textContent = '✅ Sin pendientes';
+          statusMsg.className = 'status oktext';
+        }else{
+          emptyState.style.display = "none";
+          statusMsg.textContent = `✅ ${items.length} registro(s)`;
+          statusMsg.className = 'status oktext';
+        }
+      }catch(e){
+        statusWrap.style.display = "none";
+        multiSelector.style.display = "none";
+        emptyState.style.display = "none";
+        statusMsg.textContent = '⚠️ No se pudo leer la respuesta (CORS/JSON). Abrí "Ver JSON" para verificar.';
+        statusMsg.className = 'status';
+      }
+    }
+    refreshStatusBtn.addEventListener('click', fetchStatus);
+    openJsonLink.href = `${N8N_STATUS}?id=${encodeURIComponent(deviceId)}`;
+  </script>
+</body>
+</html>
+
