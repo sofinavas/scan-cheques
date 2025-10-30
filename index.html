@@ -62,18 +62,75 @@
     .muted{ color:#94a3b8; font-size:12px }
     a.inline{ color:#7dd3fc; text-decoration:underline; }
     .hr{ height:1px; background:#1f2937; margin:10px 0 }
+
+     /* Add logo styles */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+      padding: 16px;
+      background: linear-gradient(145deg, #0f172a, #1a2544);
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .logo-container {
+      position: relative;
+      padding: 2px;
+      border-radius: 8px;
+      background: linear-gradient(45deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05));
+    }
+    .logo {
+      height: 50px;
+      width: auto;
+      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+      transition: all 0.3s ease;
+    }
+    .logo:hover {
+      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.5));
+    }
+    .brand-text {
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      padding-left: 16px;
+    }
+    .brand-text h1 {
+      background: linear-gradient(90deg, #fff, #94a3b8);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      font-size: 24px;
+      margin: 0;
+    }
+    .brand-text p {
+      color: #94a3b8;
+      margin: 4px 0 0 0;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Captura de Cheques</h1>
-    <p> Conviene subir y procesar uno por uno los cheques.<br> Desde el telefono solo podes usar la camara y no la galeria, lo voy a arreglar dont worry. Recorda que si agregas un cheque ya cargado con anterioridad, vas a tener que volver a validarlo, quiere decir que no vas a tener cheques duplicados.
-    Recorda siempre que entre la carga del cheque y lo que tarda en procesarse, podes estirar los brazos. 
-    A Status tenele paciencia entre la carga del cheque nuevo y que aparezca para ser validado, eso es lo que tarda en procesar y transcribir el cheque. 
-       <strong></strong>  <strong></strong> 
-       <strong></strong>  <strong></strong>
-    </p>
-  </header>
+<header>
+   <!-- Add logo div -->
+  <div class="brand">
+    <div class="logo-container">
+      <img src="images/logo-grey.svg" alt="MiSecretarIA" class="logo">
+    </div>
+    <div class="brand-text">
+      <h1>MiSecretarIA</h1>
+      <p>Sistema de Captura Inteligente</p>
+    </div>
+  </div>
+
+  <ol style="margin:6px 0 0 16px; padding:0 0 0 8px;">
+    <li><strong>Capturá y recortá</strong>: usá "Tomar foto(s)" para abrir la cámara o subir la imagen. Editá cada imagen en el recorte (podés rotar, resetear y volver a "Aplicar") y revisá los pendientes en el contador.</li>
+    <li><strong>Gestioná tus resultados</strong>: cada tarjeta permite descargar, copiar, volver a editar o eliminar una imagen antes de enviarla. Mantené sólo las que vas a subir.</li>
+    <li><strong>Subí los cheques listos</strong>: presioná "Subir" y Esperá unos segundos a que se procese y transcriba; el estado se actualiza en Status.</li>
+    <li><strong>Validá en Status</strong>: presioná "Actualizar Status" para ver los registros pendientes, abrí la imagen si necesitás zoom y marcá con los checks los campos revisados. Podés marcar todo OK o limpiar los checks según lo necesites.</li>
+    <li><strong>Guardá los cambios</strong>: al finalizar, tocá "Guardar". Sólo los campos con check se envían como actualización. </li>
+  </ol>
+  <p style="margin-top:6px;">Evitá subir el mismo cheque dos veces: si lo hacés, volverá a aparecer para validar. Si no ves tus cheques al instante, dale unos segundos al proceso antes de volver a consultar.</p>
+</header>
+
 
   <div class="wrap">
     <!-- Tabs -->
@@ -88,7 +145,7 @@
       <div class="stage"><div class="frame"><img id="heroPreview" alt="Última imagen recortada"></div></div>
 
       <div class="row">
-        <input id="fileInput" type="file" accept="image/*" capture="environment" multiple style="display:none">
+        <input id="fileInput" type="file" accept="image/*"  multiple style="display:none">
         <label for="fileInput" class="pill primary">Tomar foto(s)</label>
         <span class="chip">Pendientes: <span id="pendingChip">0</span></span>
       </div>
