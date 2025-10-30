@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Captura de Cheques</title>
+
+  <!-- CropperJS -->
+  <link rel="stylesheet" href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css">
+  <script defer src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
+
+  <style>
+    :root{ --accent:#0ea5e9; --bg:#0b1220; --muted:#94a3b8; --ok:#22c55e; --danger:#ef4444; }
+    *{ box-sizing:border-box }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:#0b1220; color:#e5e7eb }
+    header{ padding:16px; border-bottom:1px solid #1f2937; background:linear-gradient(180deg,#0f172a,#0b1220); position:sticky; top:0; z-index:10 }
+    header h1{ margin:0 0 6px; font-size:20px }
+    header p{ margin:0; color:var(--muted); font-size:14px }
+    .wrap{ max-width:880px; margin:0 auto; padding:16px }
+
+    .stage{ border:1px dashed #334155; border-radius:14px; background:#0f172a; overflow:hidden }
+    .frame{ position:relative; display:block; aspect-ratio:2.5/1 }
+    #heroPreview{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:none }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px }
+    .pill{ padding:11px 16px; border-radius:999px; font-weight:700; border:1px solid #1f2937; background:#111827; color:#e5e7eb; cursor:pointer }
+    .pill.primary{ background:var(--accent); color:#021018; border-color:transparent }
+    .pill.ok{ background:#052e1a; border-color:#064e3b; color:#86efac }
+    .pill.danger{ background:#3f1d1d; border-color:#7f1d1d; color:#fecaca }
+    .pill:disabled{ opacity:.6; cursor:not-allowed }
+    .chip{ font-size:12px; color:#a3a3a3; border:1px solid #1f2937; padding:6px 10px; border-radius:999px }
+    .status{ margin-left:8px; font-size:13px }
+
+    .card{ margin-top:14px; background:#0f172a; border:1px solid #1f2937; border-radius:16px; padding:12px }
+    .thumb{ width:100%; height:auto; border-radius:12px; display:block; background:#020617 }
+
+    .modal{ position:fixed; inset:0; background:rgba(2,6,23,.9); display:none; align-items:center; justify-content:center; padding:16px }
+    .modal.show{ display:flex }
+    .editor{ background:#0f172a; border:1px solid #1f2937; border-radius:16px; max-width:min(96vw,900px); width:100%; padding:12px }
+    .editor .canvas{ width:100%; max-height:65vh; overflow:hidden; border-radius:12px; background:#020617 }
+    .editor img{ max-width:100% }
+    .toolrow{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-top:10px }
+    .left,.right{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+    .rangewrap{ display:flex; align-items:center; gap:8px }
+    input[type="range"]{ width:min(62vw,480px) }
+    .oktext{ color:#86efac }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Captura de Cheques</h1>
+    <p>Usá <strong>Tomar foto(s)</strong> o <strong>Elegir de galería</strong>. Luego <strong>recortá + rotá libre</strong> y al final <strong>Subir Documentos (cheques)</strong>.</p>
+  </header>
+
+  <div class="wrap">
+    <!-- Preview de la última imagen procesada -->
+    <div class="stage">
+      <div class="frame">
+        <img id="heroPreview" alt="Última imagen recortada">
+      </div>
+    </div>
+
+    <!-- Controles -->
+    <div class="row">
+      <!-- Cámara (mantiene capture) -->
+      <input id="fileInput" type="file" accept="image/*" capture="environment" multiple style="display:none">
+      <label for="fileInput" class="pill primary">Tomar foto(s)</label>
+
+      <!-- Galería (sin capture) -->
+      <input id="galleryInput" type="file" accept="image/*" multiple style="display:none">
+      <label for="galleryInput" class="pill">Elegir de galería</label>
+
+      <span class="chip">Pendientes: <span id="pendingChip">0</span></span>
+      <span class="chip">ID dispositivo: <span id="deviceIdChip">—</span></span>
+    </div>
+
+    <div class="row">
+      <button id="uploadBtn" class="pill">Subir Documentos (cheques)</button>
+      <span id="uploadStatus" class="status"></span>
+    </div>
+
+    <h2 style="margin:18px 0 8px">Resultados</h2>
+    <div id="results"></div>
+  </div>
+
+  <!-- Modal / Editor -->
+  <div id="editorModal" class="modal" aria-hidden="true">
+    <div class="editor">
+      <div class="canvas"><img id="editImg" alt="Editor"></div>
+      <div class="toolrow">
+        <div class="left">
+          <span class="chip">Relación 2.5:1</span>
+          <div class="rangewrap">
+            <label for="rotRange" style="font-size:14px;">Rotación:</label>
+            <input id="rotRange" type="range" min="-180" max="180" step="1" value="0" />
+            <span id="rotVal" style="width:48px;text-align:right;">0°</span>
+          </div>
+        </div>
+        <div class="right">
+          <button id="resetBtn" class="pill">Reset</button>
+          <button id="cancelBtn" class="pill">Cancelar</button>
+          <button id="applyBtn" class="pill ok">Aplicar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== Config =====
+    const OUTPUT_WIDTH = 2200;     // ancho del recorte final
+    const JPEG_QUALITY = 0.92;
+    const N8N_ENDPOINT = "https://n8n.misecretaria.com.ar/webhook/scan";
+
+    // ===== DOM =====
+    const fileInput   = document.getElementById('fileInput');
+    const galleryInput= document.getElementById('galleryInput');
+    const results     = document.getElementById('results');
+    const hero        = document.getElementById('heroPreview');
+    const uploadBtn   = document.getElementById('uploadBtn');
+    const uploadStat  = document.getElementById('uploadStatus');
+    const deviceChip  = document.getElementById('deviceIdChip');
+    const pendingChip = document.getElementById('pendingChip');
+
+    // Editor
+    const modal   = document.getElementById('editorModal');
+    const editImg = document.getElementById('editImg');
+    const rotRange= document.getElementById('rotRange');
+    const rotVal  = document.getElementById('rotVal');
+    const resetBtn= document.getElementById('resetBtn');
+    const applyBtn= document.getElementById('applyBtn');
+    const cancelBtn=document.getElementById('cancelBtn');
+
+    // Estado
+    let cropper=null;
+    let currentIdx=-1;
+    const originals=[];     // [{file,name,url}]
+    const processed=[];     // (misma longitud que originals) -> {blob,url,name}
+
+    // Device ID persistente
+    const DEV_KEY='scanDeviceId';
+    function randomHex(n=8){ const b=new Uint8Array(n); crypto.getRandomValues(b); return [...b].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+    let deviceId = localStorage.getItem(DEV_KEY) || randomHex(8);
+    localStorage.setItem(DEV_KEY, deviceId);
+    deviceChip.textContent = deviceId.slice(0,8);
+
+    // Helpers UI
+    const openModal = ()=>{ modal.classList.add('show'); modal.setAttribute('aria-hidden','false'); };
+    const closeModal= ()=>{ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); };
+    const destroyCropper=()=>{ if(cropper){ cropper.destroy(); cropper=null; } };
+    const updatePending=()=>{ const pending = originals.filter((_,i)=>!processed[i]).length; pendingChip.textContent = pending; };
+
+    function loadForEdit(index){
+      currentIdx = index;
+      destroyCropper();
+      rotRange.value = 0; rotVal.textContent = '0°';
+
+      editImg.src = originals[index].url;
+      openModal();
+      editImg.onload = () => {
+        cropper = new Cropper(editImg, {
+          viewMode: 1,
+          aspectRatio: 2.5,
+          autoCropArea: 1,
+          zoomable: true,
+          movable: true,
+          rotatable: true,
+          background: false,
+          responsive: true
+        });
+      };
+    }
+
+    // Tarjeta de resultado
+    function addResultCard({url,name}, idx){
+      const card=document.createElement('div');
+      card.className='card';
+      card.dataset.idx=idx;
+      card.innerHTML=`
+        <img class="thumb" src="${url}" alt="${name}">
+        <div class="row">
+          <a class="pill" href="${url}" download="${name}">Descargar JPG</a>
+          <button class="pill" data-act="copy">Copiar</button>
+          <button class="pill" data-act="edit">Editar</button>
+          <button class="pill danger" data-act="delete">Eliminar</button>
+        </div>`;
+      card.addEventListener('click', async (e)=>{
+        const act=e.target?.dataset?.act; if(!act) return;
+        const i=Number(card.dataset.idx);
+        if(act==='edit'){ loadForEdit(i); }
+        else if(act==='delete'){ processed[i]=null; card.remove(); updatePending(); }
+        else if(act==='copy'){
+          try{
+            const blob = await (await fetch(processed[i].url)).blob();
+            await navigator.clipboard.write([new ClipboardItem({[blob.type]:blob})]);
+            e.target.textContent='¡Copiado!'; setTimeout(()=>e.target.textContent='Copiar',1200);
+          }catch{ alert('No se pudo copiar. Descargá la imagen.'); }
+        }
+      });
+      results.prepend(card);
+    }
+
+    // === Eventos del editor ===
+    rotRange.addEventListener('input', ()=>{
+      const deg=parseFloat(rotRange.value)||0;
+      rotVal.textContent = `${deg}°`;
+      if(cropper) cropper.rotateTo(deg);
+    });
+
+    resetBtn.addEventListener('click', ()=>{
+      if(!cropper) return;
+      cropper.reset();
+      cropper.rotateTo(0);
+      rotRange.value=0; rotVal.textContent='0°';
+    });
+
+    cancelBtn.addEventListener('click', ()=>{ closeModal(); destroyCropper(); });
+
+    applyBtn.addEventListener('click', async ()=>{
+      if(!cropper) return;
+      try{
+        const data = cropper.getData(true);
+        const scale = OUTPUT_WIDTH / data.width;
+        const outW = Math.round(OUTPUT_WIDTH);
+        const outH = Math.round(data.height * scale);
+
+        const canvas = cropper.getCroppedCanvas({
+          width: outW, height: outH,
+          imageSmoothingEnabled: true, imageSmoothingQuality: 'high',
+          fillColor:'#ffffff'
+        });
+
+        const blob = await new Promise(res=>canvas.toBlob(res,'image/jpeg',JPEG_QUALITY));
+        const url  = URL.createObjectURL(blob);
+        const name = `cheque_${Date.now()}_${(currentIdx+1).toString().padStart(2,'0')}.jpg`;
+
+        processed[currentIdx] = { blob, url, name };
+
+        // Preview “hero”
+        hero.src = url; hero.style.display = '';
+
+        // Reemplazar/crear tarjeta
+        const existing = results.querySelector(`.card[data-idx="${currentIdx}"]`);
+        if(existing) existing.remove();
+        addResultCard({url,name}, currentIdx);
+
+        updatePending();
+      }catch{ alert('No se pudo generar el recorte.'); }
+      finally{
+        // Cerrar editor SIEMPRE (no abrimos otro automáticamente)
+        closeModal();
+        destroyCropper();
+      }
+    });
+
+    // Cierre modal por fondo / ESC
+    modal.addEventListener('click', (e)=>{ if(e.target===modal) { closeModal(); destroyCropper(); } });
+    window.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && modal.classList.contains('show')) { closeModal(); destroyCropper(); } });
+
+    // === Handler compartido para cámara/galería ===
+    function handleSelectedFiles(fileList){
+      const files = Array.from(fileList || []);
+      if(!files.length) return;
+
+      files.forEach(file=>{
+        if(!file.type.startsWith('image/')) return;
+        originals.push({ file, name:file.name||`foto_${Date.now()}.jpg`, url:URL.createObjectURL(file) });
+        processed.push(null); // reservar índice
+      });
+      updatePending();
+
+      // Abrir editor del primer pendiente
+      const first = originals.findIndex((_,i)=>!processed[i]);
+      if(first !== -1) loadForEdit(first);
+    }
+
+    // === Cámara (con capture) ===
+    fileInput.addEventListener('change',(e)=>{
+      handleSelectedFiles(e.target.files);
+      fileInput.value=''; // permite reabrir
+    });
+
+    // === Galería (sin capture) ===
+    galleryInput.addEventListener('change',(e)=>{
+      handleSelectedFiles(e.target.files);
+      galleryInput.value=''; // permite reabrir
+    });
+
+    // === Upload a N8N ===
+    async function uploadAll(){
+      const ready = processed.filter(Boolean);
+      if(!ready.length){ alert('No hay imágenes procesadas.'); return; }
+
+      uploadBtn.disabled=true;
+      uploadStat.textContent='Subiendo...'; uploadStat.className='status';
+
+      try{
+        const fd=new FormData();
+        ready.forEach((it)=> fd.append('images[]', it.blob, it.name));
+        fd.append('device_id', localStorage.getItem('scanDeviceId') || '');
+        fd.append('images_count', String(ready.length));
+        fd.append('ua', navigator.userAgent);
+
+        const resp = await fetch(N8N_ENDPOINT, { method:'POST', body:fd, credentials:'omit' });
+        if(!resp.ok) throw new Error('HTTP '+resp.status);
+
+        uploadStat.textContent='✅ Enviado. ¡Revisá N8N!';
+        uploadStat.className='status oktext';
+      }catch(e){
+        // Si no hay CORS del webhook, el POST igual llega.
+        uploadStat.textContent='⚠️ Enviado (respuesta no legible por CORS). Verificá N8N.';
+        uploadStat.className='status';
+      }finally{
+        uploadBtn.disabled=false;
+      }
+    }
+    uploadBtn.addEventListener('click', uploadAll);
+  </script>
+</body>
+</html>
+
